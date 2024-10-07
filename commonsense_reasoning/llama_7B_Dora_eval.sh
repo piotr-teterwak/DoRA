@@ -6,17 +6,30 @@
 # distribution of this software and related documentation without an express
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
-CUDA_VISIBLE_DEVICES=$2 python commonsense_evaluate.py \
+
+
+
+CUDA_VISIBLE_DEVICES=$2 python   commonsense_evaluate.py  \
     --model LLaMA-7B \
-    --adapter DoRA \
+    --adapter LoRA \
+    --dataset hellaswag \
+    --base_model 'yahma/llama-7b-hf' \
+    --batch_size 1 \
+    --lora_weights $1|tee -a $1/hellaswag.txt
+
+CUDA_VISIBLE_DEVICES=$2 python  commonsense_evaluate.py \
+    --model LLaMA-7B \
+    --adapter LoRA \
     --dataset boolq \
     --base_model 'yahma/llama-7b-hf' \
     --batch_size 1 \
     --lora_weights $1|tee -a $1/boolq.txt
 
+
+
 CUDA_VISIBLE_DEVICES=$2 python commonsense_evaluate.py \
     --model LLaMA-7B \
-    --adapter DoRA \
+    --adapter LoRA \
     --dataset piqa \
     --base_model 'yahma/llama-7b-hf' \
     --batch_size 1 \
@@ -24,23 +37,16 @@ CUDA_VISIBLE_DEVICES=$2 python commonsense_evaluate.py \
 
 CUDA_VISIBLE_DEVICES=$2 python commonsense_evaluate.py \
     --model LLaMA-7B \
-    --adapter DoRA \
+    --adapter LoRA \
     --dataset social_i_qa \
     --base_model 'yahma/llama-7b-hf' \
     --batch_size 1 \
     --lora_weights $1|tee -a $1/social_i_qa.txt
 
-CUDA_VISIBLE_DEVICES=$2 python commonsense_evaluate.py \
-    --model LLaMA-7B \
-    --adapter DoRA \
-    --dataset hellaswag \
-    --base_model 'yahma/llama-7b-hf' \
-    --batch_size 1 \
-    --lora_weights $1|tee -a $1/hellaswag.txt
 
 CUDA_VISIBLE_DEVICES=$2 python commonsense_evaluate.py \
     --model LLaMA-7B \
-    --adapter DoRA \
+    --adapter LoRA \
     --dataset winogrande \
     --base_model 'yahma/llama-7b-hf' \
     --batch_size 1 \
@@ -48,7 +54,7 @@ CUDA_VISIBLE_DEVICES=$2 python commonsense_evaluate.py \
 
 CUDA_VISIBLE_DEVICES=$2 python commonsense_evaluate.py \
     --model LLaMA-7B \
-    --adapter DoRA \
+    --adapter LoRA \
     --dataset ARC-Challenge \
     --base_model 'yahma/llama-7b-hf' \
     --batch_size 1 \
@@ -56,7 +62,7 @@ CUDA_VISIBLE_DEVICES=$2 python commonsense_evaluate.py \
 
 CUDA_VISIBLE_DEVICES=$2 python commonsense_evaluate.py \
     --model LLaMA-7B \
-    --adapter DoRA \
+    --adapter LoRA \
     --dataset ARC-Easy \
     --base_model 'yahma/llama-7b-hf' \
     --batch_size 1 \
@@ -64,7 +70,7 @@ CUDA_VISIBLE_DEVICES=$2 python commonsense_evaluate.py \
 
 CUDA_VISIBLE_DEVICES=$2 python commonsense_evaluate.py \
     --model LLaMA-7B \
-    --adapter DoRA \
+    --adapter LoRA \
     --dataset openbookqa \
     --base_model 'yahma/llama-7b-hf' \
     --batch_size 1 \

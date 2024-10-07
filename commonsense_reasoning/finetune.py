@@ -25,8 +25,10 @@ sys.path.append(os.path.join(os.getcwd(), "peft/src/"))
 from peft import (  # noqa: E402
     LoraConfig,
     DoraConfig,
+    HyperDoraConfig,
     BottleneckConfig,
     PrefixTuningConfig,
+    HyperLoraConfig,
     get_peft_model,
     get_peft_model_state_dict,
     prepare_model_for_int8_training,
@@ -46,7 +48,7 @@ def train(
         batch_size: int = 128,
         micro_batch_size: int = 4,
         num_epochs: int = 3,
-        learning_rate: float = 3e-4,
+        learning_rate: float = 3e-5,
         weight_decay: float = 0.0,
         cutoff_len: int = 256,
         val_set_size: int = 2000,
@@ -156,7 +158,7 @@ def train(
             trust_remote_code=True,
         )
 
-    
+
     if model.config.model_type == "llama":
         # Due to the name of transformers' LlamaTokenizer, we have to do this
         # need to handle llama 3 separately
@@ -237,6 +239,33 @@ def train(
             dora_simple=dora_simple,
             Wdecompose_target_modules=Wdecompose_target_modules
         )
+       # config = HyperLoraConfig(
+       #     r=lora_r,
+       #     lora_alpha=lora_alpha,
+       #     target_modules=target_modules,
+       #     lora_dropout=lora_dropout,
+       #     bias="none",
+       #     task_type="CAUSAL_LM",
+       # )
+    elif adapter_name == "hyperlora":
+        config = HyperLoraConfig(
+            r=lora_r,
+            lora_alpha=lora_alpha,
+            target_modules=target_modules,
+            lora_dropout=lora_dropout,
+            bias="none",
+            task_type="CAUSAL_LM",
+        )
+    elif adapter_name == "hyperdora":
+        config = HyperDoraConfig(
+            r=lora_r,
+            lora_alpha=lora_alpha,
+            target_modules=target_modules,
+            lora_dropout=lora_dropout,
+            bias="none",
+            task_type="CAUSAL_LM",
+        )
+
     elif adapter_name == "bottleneck":
         config = BottleneckConfig(
             bottleneck_size=bottleneck_size,
@@ -255,6 +284,7 @@ def train(
             task_type="CAUSAL_LM",
         )
     model = get_peft_model(model, config)
+    model.print_trainable_parameters()
     if adapter_name == "prefix-tuning":
         model.to('cuda')
 
@@ -283,7 +313,7 @@ def train(
         else:
             print(f"Checkpoint {checkpoint_name} not found")
 
-    model.print_trainable_parameters()  # Be more transparent about the % of trainable params.
+    #model.print_trainable_parameters()  # Be more transparent about the % of trainable params.
 
     if val_set_size > 0:
         train_val = data["train"].train_test_split(
@@ -303,15 +333,16 @@ def train(
         # keeps Trainer from trying its own DataParallelism when more than 1 gpu is available
         model.is_parallelizable = True
         model.model_parallel = True
-    
     trainer = transformers.Trainer(
         model=model,
         train_dataset=train_data,
         eval_dataset=val_data,
         args=transformers.TrainingArguments(
             per_device_train_batch_size=micro_batch_size,
+            dataloader_drop_last = True,
             gradient_accumulation_steps=gradient_accumulation_steps,
-            warmup_steps=100,
+            #warmup_steps=100,
+            warmup_ratio=0.03,
             num_train_epochs=num_epochs,
             learning_rate=learning_rate,
             weight_decay=weight_decay,
@@ -354,28 +385,28 @@ def train(
         "\n If there's a warning about missing keys above, please disregard :)"
     )
 
-    
+
 
 
 def generate_prompt(data_point):
     # sorry about the formatting disaster gotta move fast
     if data_point["input"]:
-        return f"""Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request. 
+        return f"""Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
 
                 ### Instruction:
                 {data_point["instruction"]}
-                
+
                 ### Input:
                 {data_point["input"]}
-                
+
                 ### Response:
                 {data_point["output"]}""" # noqa: E501
     else:
-        return f"""Below is an instruction that describes a task. Write a response that appropriately completes the request.  
+        return f"""Below is an instruction that describes a task. Write a response that appropriately completes the request.
 
                 ### Instruction:
                 {data_point["instruction"]}
-                
+
                 ### Response:
                 {data_point["output"]}""" # noqa: E501
 

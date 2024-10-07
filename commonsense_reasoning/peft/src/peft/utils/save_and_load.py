@@ -57,6 +57,29 @@ def get_peft_model_state_dict(model, state_dict=None):
                         to_return[bias_name] = state_dict[bias_name]
         else:
             raise NotImplementedError
+    elif model.peft_config.peft_type == PeftType.HYPERLORA:
+        # to_return = lora_state_dict(model, bias=model.peft_config.bias)
+        # adapted from `https://github.com/microsoft/LoRA/blob/main/loralib/utils.py`
+        # to directly with the state dict which is necessary when using DeepSpeed or FSDP
+        bias = model.peft_config.bias
+        if bias == "none":
+            to_return = {k: state_dict[k] for k in state_dict if "hypernetwork" in k or "input_vector" in k or "rescale" in k}
+        elif bias == "all":
+            to_return = {k: state_dict[k] for k in state_dict if "hypernetwork" in k or "input_vector" in k or "rescale" in k or "bias" in k}
+        else:
+            raise NotImplementedError
+    elif model.peft_config.peft_type == PeftType.HYPERDORA:
+        # to_return = lora_state_dict(model, bias=model.peft_config.bias)
+        # adapted from `https://github.com/microsoft/LoRA/blob/main/loralib/utils.py`
+        # to directly with the state dict which is necessary when using DeepSpeed or FSDP
+        bias = model.peft_config.bias
+        if bias == "none":
+            to_return = {k: state_dict[k] for k in state_dict if "hypernetwork" in k or "input_vector" in k or "rescale" in k or "weight_m_wdecomp" in k}
+        elif bias == "all":
+            to_return = {k: state_dict[k] for k in state_dict if "hypernetwork" in k or "input_vector" in k or "rescale" in k or "bias" in k or "weight_m_wdecomp" in k}
+        else:
+            raise NotImplementedError
+
     elif model.peft_config.peft_type == PeftType.DORA:
 
         bias = model.peft_config.bias
@@ -72,6 +95,7 @@ def get_peft_model_state_dict(model, state_dict=None):
                     bias_name = k.split("lora_")[0] + "bias"
                     if bias_name in state_dict:
                         to_return[bias_name] = state_dict[bias_name]
+
 
     elif model.peft_config.peft_type == PeftType.BOTTLENECK:
         # return the state dict of the model with Bottleneck adapters
@@ -114,7 +138,7 @@ def set_peft_model_state_dict(model, peft_model_state_dict):
     """
 
     model.load_state_dict(peft_model_state_dict, strict=False)
-    if model.peft_config.peft_type != PeftType.LORA and model.peft_config.peft_type != PeftType.BOTTLENECK and model.peft_config.peft_type != PeftType.DORA:
+    if model.peft_config.peft_type != PeftType.LORA and model.peft_config.peft_type != PeftType.BOTTLENECK and model.peft_config.peft_type != PeftType.DORA and model.peft_config.peft_type != PeftType.HYPERLORA and model.peft_config.peft_type != PeftType.HYPERDORA:
         model.prompt_encoder.embedding.load_state_dict(
             {"weight": peft_model_state_dict["prompt_embeddings"]}, strict=True
         )

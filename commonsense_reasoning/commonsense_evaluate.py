@@ -97,7 +97,7 @@ def main(
                         wdecompose_target_module_found = re.fullmatch(model.peft_config.Wdecompose_target_modules, key)
                     else:
                         wdecompose_target_module_found = any(key.endswith(target_key) for target_key in model.peft_config.Wdecompose_target_modules)
-                else: 
+                else:
                     wdecompose_target_module_found = False
             else:
                 wdecompose_target_module_found = False
@@ -116,7 +116,7 @@ def main(
                 module.merge_weights = True
                 module.train(mode=False)
 
-
+    model = model.float()
     total = len(batches)
     correct = 0
     current = 0
@@ -174,7 +174,7 @@ def generate_prompt(instruction, input=None):
                 ### Response:
                 """  # noqa: E501
     else:
-        return f"""Below is an instruction that describes a task. Write a response that appropriately completes the request. 
+        return f"""Below is an instruction that describes a task. Write a response that appropriately completes the request.
 
                 ### Instruction:
                 {instruction}
