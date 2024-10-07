@@ -206,7 +206,7 @@ class HyperDoraModel(torch.nn.Module):
 
 def mark_only_hyper_dora_as_trainable(model: nn.Module, bias: str = "none") -> None:
     for n, p in model.named_parameters():
-        if "hypernetwork" not in n and  "input_vector" not in n and "rescale" not in n and "weight_m_decomp" not in n :
+        if "hypernetwork" not in n and  "input_vector" not in n and "rescale" not in n :
             p.requires_grad = False
     if bias == "none":
         return
@@ -261,11 +261,12 @@ class HyperDoraLinear(nn.Linear, HyperDoraLayer):
         **kwargs,
     ):
         nn.Linear.__init__(self, in_features, out_features, **kwargs)
-        self.hypernetwork = HypernetworkMLP(hypernetwork_input_dim, hypernetwork_hidden_dim, r * (in_features + out_features) )
-        #input_vector = torch.empty(1, hypernetwork_input_dim).normal_(mean=0.0, std=0.01)
-        input_vector = torch.empty(1, hypernetwork_input_dim).normal_(mean=0.0, std=1.0)
+        self.hypernetwork = HypernetworkMLP(hypernetwork_input_dim, hypernetwork_hidden_dim, r * (in_features + out_features) + out_features )
+        input_vector = torch.empty(1, hypernetwork_input_dim).normal_(mean=0.0, std=0.01)
+        #input_vector = torch.empty(1, hypernetwork_input_dim).normal_(mean=0.0, std=1.0)
         self.input_vector = nn.Parameter(input_vector)
         self.rescale = nn.Parameter(torch.tensor(0.0))
+        self.rescale_mag = nn.Parameter(torch.tensor(0.0))
         HyperDoraLayer.__init__(self, r=r, lora_alpha=lora_alpha, lora_dropout=lora_dropout, merge_weights=merge_weights, hypernetwork=self.hypernetwork)
         self.fan_in_fan_out = fan_in_fan_out
         self.dora_simple = True  # Simplified to save GPU memory, can be turned off if needed
@@ -281,11 +282,15 @@ class HyperDoraLinear(nn.Linear, HyperDoraLayer):
     def generate_lora_parameters(self):
         if self.hypernetwork is not None and self.input_vector is not None:
             lora_params = self.hypernetwork(self.input_vector)
+            total_params = lora_params.size(1)
             lora_A_size = (self.in_features, self.r)
             lora_B_size = (self.r, self.out_features)
-            self.lora_A = lora_params[:, :self.in_features * self.r].reshape(lora_A_size)
-            self.lora_B = lora_params[:, self.in_features * self.r:].reshape(lora_B_size) * self.rescale
-
+            lora_A_end = self.in_features * self.r
+            lora_B_end = lora_A_end + self.r * self.out_features
+            magnitude_end = lora_B_end + self.out_features
+            self.lora_A = lora_params[:, :lora_A_end].reshape(lora_A_size)
+            self.lora_B = lora_params[:, lora_A_end:lora_B_end].reshape(lora_B_size) * self.rescale
+            self.magnitude_weights = lora_params[:, lora_B_end:magnitude_end].reshape(-1) * self.rescale_mag
 
     def forward(self, x: torch.Tensor):
         previous_dtype = self.weight.dtype
@@ -298,7 +303,7 @@ class HyperDoraLinear(nn.Linear, HyperDoraLayer):
             new_weight_v = self.weight + (self.lora_B.T @ self.lora_A.T) * self.scaling
             merged =(self.lora_B.T @ self.lora_A.T) * self.scaling
 
-            norm_scale = self.weight_m_wdecomp.weight.view(-1) / (torch.linalg.norm(new_weight_v,dim=1)).detach()
+            norm_scale = (self.weight_m_wdecomp.weight.view(-1) + self.magnitude_weights) / (torch.linalg.norm(new_weight_v,dim=1)).detach()
 
             org_result = (F.linear(x, transpose(self.weight, self.fan_in_fan_out)))
 
