@@ -80,6 +80,7 @@ class HyperDoraConfig(PeftConfig):
     )
     hypernetwork_input_dim: int = field(default=128, metadata={"help": "Input dimension for hypernetwork MLP"})
     hypernetwork_hidden_dim: int = field(default=32, metadata={"help": "Hidden dimension for hypernetwork MLP"})
+    input_std: float = field(default=0.01, metadata={"help": "Hypernet input std"})
 
     def __post_init__(self):
         self.peft_type = PeftType.HYPERDORA
@@ -119,6 +120,7 @@ class HyperDoraModel(torch.nn.Module):
             and not is_hf_device_map_available,
             "hypernetwork_input_dim": self.peft_config.hypernetwork_input_dim,
             "hypernetwork_hidden_dim": self.peft_config.hypernetwork_hidden_dim,
+            "input_std": self.peft_config.input_std,
         }
         key_list = [key for key, _ in self.model.named_modules()]
         for key in key_list:
@@ -258,11 +260,12 @@ class HyperDoraLinear(nn.Linear, HyperDoraLayer):
         merge_weights: bool = True,
         hypernetwork_input_dim: int = 128,
         hypernetwork_hidden_dim: int = 256,
+        input_std: float = 0.01,
         **kwargs,
     ):
         nn.Linear.__init__(self, in_features, out_features, **kwargs)
         self.hypernetwork = HypernetworkMLP(hypernetwork_input_dim, hypernetwork_hidden_dim, r * (in_features + out_features) + out_features )
-        input_vector = torch.empty(1, hypernetwork_input_dim).normal_(mean=0.0, std=0.01)
+        input_vector = torch.empty(1, hypernetwork_input_dim).normal_(mean=0.0, std=input_std)
         #input_vector = torch.empty(1, hypernetwork_input_dim).normal_(mean=0.0, std=1.0)
         self.input_vector = nn.Parameter(input_vector)
         self.rescale = nn.Parameter(torch.tensor(0.0))

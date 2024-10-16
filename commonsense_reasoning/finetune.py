@@ -60,6 +60,7 @@ def train(
         lora_alpha: int = 16,
         lora_dropout: float = 0.05,
         lora_target_modules: List[str] = None,
+        input_std: float = 0.01,
         # bottleneck adapter hyperparams
         bottleneck_size: int = 256,
         non_linearity: str = "tanh",
@@ -260,6 +261,7 @@ def train(
         config = HyperDoraConfig(
             r=lora_r,
             lora_alpha=lora_alpha,
+            input_std=input_std,
             target_modules=target_modules,
             lora_dropout=lora_dropout,
             bias="none",
