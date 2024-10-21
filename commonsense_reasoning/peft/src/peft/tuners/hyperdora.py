@@ -36,17 +36,30 @@ if is_bnb_available():
     import bitsandbytes as bnb
 
 class HypernetworkMLP(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim):
+    def __init__(self, input_dim, hidden_dim, output_dims):
         super(HypernetworkMLP, self).__init__()
-        self.mlp = nn.Sequential(
+        # output_dims is a list of output dimensions for lora_A, lora_B, and magnitude_weights
+        self.mlp_common = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.ReLU(),
-            nn.Linear(hidden_dim, output_dim)
         )
+        self.mlp_A = nn.Linear(hidden_dim, output_dims[0])
+        self.mlp_B = nn.Linear(hidden_dim, output_dims[1])
+        self.mlp_C = nn.Linear(hidden_dim, output_dims[2])
+
+        # Initialize the layers' weights to zero
+        self.mlp_A.bias.data.zero_()
+        self.mlp_B.weight.data.zero_()
+        self.mlp_B.bias.data.zero_()
+        self.mlp_C.weight.data.zero_()
+        self.mlp_C.bias.data.zero_()
 
     def forward(self, x):
-        return self.mlp(x)
-
+        common = self.mlp_common(x)
+        output_A = self.mlp_A(common)
+        output_B = self.mlp_B(common)
+        output_C = self.mlp_C(common)
+        return output_A, output_B, output_C
 
 @dataclass
 class HyperDoraConfig(PeftConfig):
@@ -264,12 +277,10 @@ class HyperDoraLinear(nn.Linear, HyperDoraLayer):
         **kwargs,
     ):
         nn.Linear.__init__(self, in_features, out_features, **kwargs)
-        self.hypernetwork = HypernetworkMLP(hypernetwork_input_dim, hypernetwork_hidden_dim, r * (in_features + out_features) + out_features )
+        self.hypernetwork = HypernetworkMLP(hypernetwork_input_dim, hypernetwork_hidden_dim, [r * in_features, r * out_features, out_features]  )
         input_vector = torch.empty(1, hypernetwork_input_dim).normal_(mean=0.0, std=input_std)
         #input_vector = torch.empty(1, hypernetwork_input_dim).normal_(mean=0.0, std=1.0)
         self.input_vector = nn.Parameter(input_vector)
-        self.rescale = nn.Parameter(torch.tensor(0.0))
-        self.rescale_mag = nn.Parameter(torch.tensor(0.0))
         HyperDoraLayer.__init__(self, r=r, lora_alpha=lora_alpha, lora_dropout=lora_dropout, merge_weights=merge_weights, hypernetwork=self.hypernetwork)
         self.fan_in_fan_out = fan_in_fan_out
         self.dora_simple = True  # Simplified to save GPU memory, can be turned off if needed
@@ -284,16 +295,12 @@ class HyperDoraLinear(nn.Linear, HyperDoraLayer):
 
     def generate_lora_parameters(self):
         if self.hypernetwork is not None and self.input_vector is not None:
-            lora_params = self.hypernetwork(self.input_vector)
-            total_params = lora_params.size(1)
+            output_A, output_B, output_C = self.hypernetwork(self.input_vector)
             lora_A_size = (self.in_features, self.r)
             lora_B_size = (self.r, self.out_features)
-            lora_A_end = self.in_features * self.r
-            lora_B_end = lora_A_end + self.r * self.out_features
-            magnitude_end = lora_B_end + self.out_features
-            self.lora_A = lora_params[:, :lora_A_end].reshape(lora_A_size)
-            self.lora_B = lora_params[:, lora_A_end:lora_B_end].reshape(lora_B_size) * self.rescale
-            self.magnitude_weights = lora_params[:, lora_B_end:magnitude_end].reshape(-1) * self.rescale_mag
+            self.lora_A = output_A.reshape(lora_A_size)
+            self.lora_B = output_B.reshape(lora_B_size)
+            self.magnitude_weights = output_C.reshape(-1)
 
     def forward(self, x: torch.Tensor):
         previous_dtype = self.weight.dtype
@@ -304,7 +311,6 @@ class HyperDoraLinear(nn.Linear, HyperDoraLayer):
         if self.r > 0:
 
             new_weight_v = self.weight + (self.lora_B.T @ self.lora_A.T) * self.scaling
-            merged =(self.lora_B.T @ self.lora_A.T) * self.scaling
 
             norm_scale = (self.weight_m_wdecomp.weight.view(-1) + self.magnitude_weights) / (torch.linalg.norm(new_weight_v,dim=1)).detach()
 
